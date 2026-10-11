@@ -1,0 +1,6 @@
+streamlit
+translators
+legacy-cgi
+ultralytics
+opencv-python-headless
+pillow
