@@ -4,3 +4,4 @@ legacy-cgi
 ultralytics
 opencv-python-headless
 pillow
+numpy
