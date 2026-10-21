@@ -1,7 +1,8 @@
-streamlit
-translators
-legacy-cgi
-ultralytics
-opencv-python-headless
+streamlit>=1.40
+deep-translator>=1.11
+langdetect>=1.0.9
+gTTS>=2.5
+ultralytics>=8.3
+opencv-python-headless>=4.9
 pillow
 numpy
