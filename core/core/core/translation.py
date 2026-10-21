@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import io
 import re
+import time
 from dataclasses import dataclass, field
 from typing import Callable, Optional, Sequence
 
@@ -40,6 +41,7 @@ class TranslationResult:
     chunks: int = 1
     detected: bool = False
     errors: list[str] = field(default_factory=list)
+    elapsed_ms: int = 0
 
     @property
     def source_name(self) -> str:
@@ -98,20 +100,25 @@ def _hard_split(s: str, limit: int) -> list[str]:
 
 
 # ------------------------ language detection ------------------------------- #
-def detect_language(text: str) -> Optional[str]:
-    """Google-style language code, or None if unavailable / too short."""
+def detect_with_confidence(text: str) -> Optional[tuple[str, float]]:
+    """Best guess (google_code, probability), or None if unavailable / too short."""
     sample = text.strip()
-    if len(sample) < 3:
+    if len(sample) < 8:
         return None
     try:
-        from langdetect import DetectorFactory, detect
+        from langdetect import DetectorFactory, detect_langs
 
         DetectorFactory.seed = 0
-        code = detect(sample).lower()
+        best = detect_langs(sample)[0]
     except Exception:
         return None
-    code = _LANGDETECT_ALIASES.get(code, code)
-    return code if code.lower() in CODE_TO_NAME else None
+    code = _LANGDETECT_ALIASES.get(best.lang.lower(), best.lang.lower())
+    return (code, float(best.prob)) if code.lower() in CODE_TO_NAME else None
+
+
+def detect_language(text: str) -> Optional[str]:
+    guess = detect_with_confidence(text)
+    return guess[0] if guess else None
 
 
 # ------------------------------ engines ------------------------------------ #
@@ -158,6 +165,7 @@ def translate(text: str, source: str, target: str,
 
     chunks = chunk_text(text)
     errors: list[str] = []
+    started = time.perf_counter()
     for name, engine in engines:
         src_for_engine = source if name == "Google Translate" else resolved_source
         try:
@@ -166,7 +174,8 @@ def translate(text: str, source: str, target: str,
                 out.append(engine(c, src_for_engine, target) if c.strip() else c)
             return TranslationResult(
                 "\n".join(o or "" for o in out), resolved_source, target, name,
-                chunks=len([c for c in chunks if c.strip()]), detected=detected, errors=errors)
+                chunks=len([c for c in chunks if c.strip()]), detected=detected,
+                errors=errors, elapsed_ms=int((time.perf_counter() - started) * 1000))
         except Exception as exc:
             errors.append(f"{name}: {exc}")
     raise TranslationError("All translation engines failed -> " + " | ".join(errors))
