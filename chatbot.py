@@ -1,34 +1,10 @@
-"""
-CodeAlpha AI Internship - Task 2: Gemini-Style FAQ Chatbot
------------------------------------------------------------
-Upgrades over the first version:
-  * Smarter matching (typo tolerant, handles several topics in one question)
-  * Works in both light and dark mode
-  * Typing effect on bot replies
-  * More quick-prompt buttons + clear-chat button + chat counter
-  * Only uses streamlit + Python standard library, so requirements.txt
-    does NOT need to change and Task 1 / Task 3 are unaffected.
-"""
+import os
 
-import difflib
-import re
-import time
-
+import requests
 import streamlit as st
 
-# ---------------------------------------------------------------------------
-# Page config (must be the first Streamlit command)
-# ---------------------------------------------------------------------------
-st.set_page_config(
-    page_title="Gemini-Style AI Assistant",
-    page_icon="✨",
-    layout="centered",
-)
+st.set_page_config(page_title="AI Assistant", page_icon="✨", layout="centered")
 
-# ---------------------------------------------------------------------------
-# Custom CSS (theme-neutral: no hard-coded white background, so it looks
-# right in both light and dark mode)
-# ---------------------------------------------------------------------------
 st.markdown(
     """
 <style>
@@ -37,9 +13,6 @@ st.markdown(
     padding: 1rem;
     margin-bottom: 0.8rem;
     border: 1px solid rgba(128, 128, 128, 0.25);
-}
-.stChatInputContainer, [data-testid="stChatInput"] {
-    border-radius: 24px;
 }
 .gemini-header {
     font-family: 'Google Sans', sans-serif;
@@ -61,243 +34,215 @@ st.markdown(
 )
 
 # ---------------------------------------------------------------------------
-# Knowledge base
-# Each entry: a topic name, trigger keywords/phrases, and the answer.
+# Instructions given to the AI (background facts about the internship are
+# included so it can still answer those questions accurately)
 # ---------------------------------------------------------------------------
-FAQ_ENTRIES = [
-    {
-        "topic": "deadline",
-        "keywords": ["deadline", "due", "last date", "submit by", "cutoff", "cut off", "november 10", "nov 10"],
-        "answer": "📅 The final deadline to submit all your tasks via the official Google Form is **November 10, 2026**.",
-    },
-    {
-        "topic": "tasks",
-        "keywords": ["task", "tasks", "how many", "requirements", "requirement", "complete"],
-        "answer": "📋 You are required to complete any **2 or 3 tasks** within your chosen domain (Artificial Intelligence) to be eligible for your certificate and LOR.",
-    },
-    {
-        "topic": "certificate",
-        "keywords": ["certificate", "certification", "lor", "letter of recommendation", "recommendation"],
-        "answer": "🎓 Certificates and Letters of Recommendation (LOR) will be distributed starting **November 11, 2026**, upon verifying your Google Form submission.",
-    },
-    {
-        "topic": "submission",
-        "keywords": ["submission", "submit", "google form", "form", "github link", "upload"],
-        "answer": "📤 You must submit your GitHub repository link containing your completed code inside the official CodeAlpha Google Form.",
-    },
-    {
-        "topic": "linkedin",
-        "keywords": ["linkedin", "video", "post", "explanation video"],
-        "answer": "🎥 Sharing a video explanation on LinkedIn is completely **optional**! It gives extra visibility, but it is not mandatory for your certificate.",
-    },
-    {
-        "topic": "domain",
-        "keywords": ["domain", "track", "internship track", "field"],
-        "answer": "🧠 You are registered under the **Artificial Intelligence** domain for this session.",
-    },
-    {
-        "topic": "projects",
-        "keywords": ["project", "projects", "portfolio", "about", "apps", "applications", "my work"],
-        "answer": (
-            "🚀 Your portfolio has three deployed apps:\n\n"
-            "- **Task 1:** Polyglot AI Translator (multi-language translation)\n"
-            "- **Task 2:** Gemini-Style FAQ Chatbot (this app!)\n"
-            "- **Task 3:** Real-Time Object Detection Suite (YOLOv8 + OpenCV)"
-        ),
-    },
-    {
-        "topic": "techstack",
-        "keywords": ["tech", "stack", "technology", "technologies", "tools", "libraries", "python", "streamlit", "yolo"],
-        "answer": (
-            "🛠️ **Tech stack used across the portfolio:**\n\n"
-            "- Python 3.11 and Streamlit Community Cloud\n"
-            "- Ultralytics YOLOv8, OpenCV (headless) and Pillow for computer vision\n"
-            "- `translators` and `deep-translator` for translation\n"
-            "- Git and GitHub for version control"
-        ),
-    },
-    {
-        "topic": "greeting",
-        "keywords": ["hello", "hi", "hey", "hii", "hola", "good morning", "good evening"],
-        "answer": "👋 Hello! Welcome back. How can I assist you with your CodeAlpha tasks today?",
-    },
-    {
-        "topic": "help",
-        "keywords": ["help", "assist", "support", "what can you do", "options", "menu"],
-        "answer": (
-            "💡 I can answer questions about:\n\n"
-            "- 📅 Deadlines\n"
-            "- 📋 Task requirements\n"
-            "- 📤 Submission steps\n"
-            "- 🎓 Certificate and LOR dates\n"
-            "- 🎥 LinkedIn video\n"
-            "- 🛠️ Tech stack and your projects"
-        ),
-    },
-]
+SYSTEM_PROMPT = """You are a helpful, friendly AI assistant. Answer any question the user asks, on any topic, clearly and accurately. Use Markdown when it helps (lists, code blocks, bold). Keep answers focused and to the point.
 
-FALLBACK_MESSAGE = (
-    "🤔 I'm not entirely sure about that one. Try asking me about:\n\n"
-    "- **deadlines** 📅\n"
-    "- **task requirements** 📋\n"
-    "- **certificate dates** 🎓\n"
-    "- **submission steps** 📤\n\n"
-    "Or type **help** to see everything I can do!"
-)
-
-WELCOME_MESSAGE = (
-    "Hello! I'm your Gemini-styled AI assistant. "
-    "Ask me anything about your CodeAlpha tasks or deadlines!"
-)
+If the user asks about the CodeAlpha AI internship, use these facts:
+- Final deadline to submit all tasks via the official Google Form: November 10, 2026.
+- Required: any 2 or 3 tasks in the chosen domain (Artificial Intelligence) for the certificate and LOR.
+- Certificates and Letters of Recommendation are distributed from November 11, 2026, after the Google Form submission is verified.
+- Submission: the GitHub repository link with the completed code goes into the official CodeAlpha Google Form.
+- A LinkedIn video explanation is optional, not mandatory.
+- The portfolio has three apps: Task 1 Polyglot AI Translator, Task 2 this chatbot, Task 3 Real-Time Object Detection (YOLOv8 + OpenCV)."""
 
 QUICK_PROMPTS = [
-    ("📅 What is the deadline?", "What is the deadline?"),
-    ("📋 How many tasks needed?", "How many tasks do I need to complete?"),
-    ("🎓 When is my certificate?", "When will I get my certificate?"),
-    ("📤 How do I submit?", "How do I submit my tasks?"),
-    ("🎥 Is the LinkedIn video required?", "Is the LinkedIn video mandatory?"),
-    ("🛠️ What tech stack is used?", "What tech stack is used?"),
+    "Explain machine learning in simple words",
+    "Write a Python function to reverse a string",
+    "What is the deadline for my internship tasks?",
+    "Give me tips for a good LinkedIn post",
 ]
 
-
-# ---------------------------------------------------------------------------
-# Matching logic
-# ---------------------------------------------------------------------------
-def _normalize(text: str) -> list:
-    """Lowercase, strip punctuation, return a list of word tokens."""
-    return re.sub(r"[^a-z0-9\s]", " ", text.lower()).split()
-
-
-def _score_entry(entry: dict, tokens: list, padded: str) -> int:
-    """Score how well one FAQ entry matches the user's query."""
-    score = 0
-    for keyword in entry["keywords"]:
-        if " " in keyword:
-            # Multi-word phrase: must appear as whole words.
-            if f" {keyword} " in padded:
-                score = max(score, 3)
-        elif keyword in tokens:
-            # Exact whole-word match.
-            score = max(score, 3)
-        elif len(keyword) >= 4:
-            # Typo tolerance (e.g. "deadlne" -> "deadline").
-            for token in tokens:
-                if len(token) >= 4 and difflib.SequenceMatcher(None, keyword, token).ratio() >= 0.8:
-                    score = max(score, 2)
-                    break
-    return score
+GEMINI_MODELS = [
+    "gemini-3.1-flash-lite",
+    "gemini-3.1-flash-lite-preview",
+    "gemini-3-flash-preview",
+    "gemini-2.5-flash",
+]
+CLAUDE_MODEL = "claude-haiku-5-5"
+MAX_HISTORY = 20
 
 
-def get_bot_response(user_query: str) -> str:
-    """Return the best FAQ answer (or two answers if the question covers two topics)."""
-    tokens = _normalize(user_query)
-    if not tokens:
-        return FALLBACK_MESSAGE
+class ChatError(Exception):
+    pass
 
-    padded = " " + " ".join(tokens) + " "
-    scored = [(_score_entry(entry, tokens, padded), entry) for entry in FAQ_ENTRIES]
-    scored = [item for item in scored if item[0] >= 2]
-    scored.sort(key=lambda item: item[0], reverse=True)
 
-    if not scored:
-        return FALLBACK_MESSAGE
+def get_secret(name):
+    try:
+        value = st.secrets[name]
+        if value:
+            return str(value)
+    except Exception:
+        pass
+    return os.environ.get(name)
 
-    best_score, best_entry = scored[0]
-    answers = [best_entry["answer"]]
 
-    # If the question clearly covers a second topic, answer that too.
-    if len(scored) > 1 and scored[1][0] >= 3 and best_score >= 3:
-        answers.append(scored[1][1]["answer"])
+def call_gemini(history, api_key):
+    contents = [
+        {"role": "user" if m["role"] == "user" else "model", "parts": [{"text": m["content"]}]}
+        for m in history
+    ]
+    body = {
+        "systemInstruction": {"parts": [{"text": SYSTEM_PROMPT}]},
+        "contents": contents,
+    }
+    custom = get_secret("GEMINI_MODEL")
+    models = [custom] if custom else list(GEMINI_MODELS)
+    cached = st.session_state.get("gemini_model")
+    if cached in models:
+        models.remove(cached)
+        models.insert(0, cached)
 
-    return "\n\n".join(answers)
+    for model in models:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+        try:
+            r = requests.post(
+                url,
+                headers={"x-goog-api-key": api_key, "Content-Type": "application/json"},
+                json=body,
+                timeout=60,
+            )
+        except requests.RequestException:
+            raise ChatError("Network problem. Please try again.")
+
+        if r.status_code == 404:
+            continue  # model name not available, try the next one
+        if r.status_code in (400, 401, 403):
+            raise ChatError("The API key looks invalid. Please check GEMINI_API_KEY in your secrets.")
+        if r.status_code == 429:
+            raise ChatError("Too many requests right now. Please wait a moment and try again.")
+        if r.status_code != 200:
+            raise ChatError(f"The AI service returned an error ({r.status_code}). Please try again.")
+
+        data = r.json()
+        candidates = data.get("candidates") or []
+        if not candidates:
+            raise ChatError("I couldn't answer that one. Please try rephrasing.")
+        parts = candidates[0].get("content", {}).get("parts", [])
+        text = "".join(p.get("text", "") for p in parts if not p.get("thought"))
+        if not text.strip():
+            raise ChatError("I couldn't answer that one. Please try rephrasing.")
+        st.session_state["gemini_model"] = model
+        return text.strip()
+
+    raise ChatError("No available Gemini model was found. Set GEMINI_MODEL in your secrets.")
+
+
+def call_claude(history, api_key):
+    body = {
+        "model": get_secret("CLAUDE_MODEL") or CLAUDE_MODEL,
+        "max_tokens": 1500,
+        "system": SYSTEM_PROMPT,
+        "messages": [{"role": m["role"], "content": m["content"]} for m in history],
+    }
+    try:
+        r = requests.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": api_key,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
+            },
+            json=body,
+            timeout=60,
+        )
+    except requests.RequestException:
+        raise ChatError("Network problem. Please try again.")
+
+    if r.status_code in (401, 403):
+        raise ChatError("The API key looks invalid. Please check ANTHROPIC_API_KEY in your secrets.")
+    if r.status_code == 429:
+        raise ChatError("Too many requests right now. Please wait a moment and try again.")
+    if r.status_code != 200:
+        raise ChatError(f"The AI service returned an error ({r.status_code}). Please try again.")
+
+    blocks = r.json().get("content", [])
+    text = "".join(b.get("text", "") for b in blocks if b.get("type") == "text")
+    if not text.strip():
+        raise ChatError("I couldn't answer that one. Please try rephrasing.")
+    return text.strip()
+
+
+def get_bot_response(messages):
+    history = messages[-MAX_HISTORY:]
+    while history and history[0]["role"] != "user":
+        history = history[1:]
+
+    gemini_key = get_secret("GEMINI_API_KEY")
+    claude_key = get_secret("ANTHROPIC_API_KEY")
+    if gemini_key:
+        return call_gemini(history, gemini_key)
+    if claude_key:
+        return call_claude(history, claude_key)
+    raise ChatError(
+        "No API key found. Add `GEMINI_API_KEY` (free from Google AI Studio) "
+        "to this app's Secrets to turn the chatbot on."
+    )
 
 
 # ---------------------------------------------------------------------------
 # Session state
 # ---------------------------------------------------------------------------
-def reset_chat() -> None:
-    st.session_state.messages = [{"role": "assistant", "content": WELCOME_MESSAGE}]
-    st.session_state.pending_prompt = None
-
-
-def queue_prompt(text: str) -> None:
-    """Callback for sidebar quick-prompt buttons."""
-    st.session_state.pending_prompt = text
-
-
 if "messages" not in st.session_state:
-    st.session_state.messages = [{"role": "assistant", "content": WELCOME_MESSAGE}]
+    st.session_state.messages = []
 if "pending_prompt" not in st.session_state:
     st.session_state.pending_prompt = None
 
+
+def reset_chat():
+    st.session_state.messages = []
+    st.session_state.pending_prompt = None
+
+
+def queue_prompt(text):
+    st.session_state.pending_prompt = text
+
+
 # ---------------------------------------------------------------------------
-# UI: Sidebar
+# Sidebar
 # ---------------------------------------------------------------------------
 with st.sidebar:
-    st.markdown("### ✨ Gemini Clone")
-    st.write("**CodeAlpha Task 2: FAQ Chatbot**")
-    st.markdown("---")
-
     st.button("➕ New Chat", use_container_width=True, on_click=reset_chat)
-
     st.markdown("---")
-    st.markdown("**Quick Prompt Ideas:**")
-    for index, (label, prompt_text) in enumerate(QUICK_PROMPTS):
-        st.button(
-            label,
-            key=f"quick_{index}",
-            use_container_width=True,
-            on_click=queue_prompt,
-            args=(prompt_text,),
-        )
-
-    st.markdown("---")
-    user_msgs = sum(1 for m in st.session_state.messages if m["role"] == "user")
-    st.caption(f"💬 Questions asked this chat: {user_msgs}")
+    for i, text in enumerate(QUICK_PROMPTS):
+        st.button(text, key=f"quick_{i}", use_container_width=True, on_click=queue_prompt, args=(text,))
 
 # ---------------------------------------------------------------------------
-# UI: Main header
+# Header
 # ---------------------------------------------------------------------------
 st.markdown('<p class="gemini-header">Hello, Viniska</p>', unsafe_allow_html=True)
-st.markdown(
-    '<p class="gemini-sub">What would you like to know about your internship?</p>',
-    unsafe_allow_html=True,
-)
+st.markdown('<p class="gemini-sub">How can I help you today?</p>', unsafe_allow_html=True)
 st.markdown("<br>", unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
-# UI: Chat history
+# Chat history
 # ---------------------------------------------------------------------------
 for message in st.session_state.messages:
-    avatar = "✨" if message["role"] == "assistant" else "👤"
-    with st.chat_message(message["role"], avatar=avatar):
+    with st.chat_message(message["role"], avatar="✨" if message["role"] == "assistant" else "👤"):
         st.markdown(message["content"])
 
 # ---------------------------------------------------------------------------
-# Handle input (typed prompt OR sidebar quick prompt)
+# Input
 # ---------------------------------------------------------------------------
-prompt = st.chat_input("Enter a prompt here...")
+prompt = st.chat_input("Ask me anything...")
 
 if st.session_state.pending_prompt:
     prompt = st.session_state.pending_prompt
     st.session_state.pending_prompt = None
 
 if prompt:
-    # Show user message
     st.chat_message("user", avatar="👤").markdown(prompt)
     st.session_state.messages.append({"role": "user", "content": prompt})
 
-    # Get bot response
-    response = get_bot_response(prompt)
-
-    # Show assistant response with a typing effect
     with st.chat_message("assistant", avatar="✨"):
-        placeholder = st.empty()
-        shown = ""
-        for word in response.split(" "):
-            shown += word + " "
-            placeholder.markdown(shown + "▌")
-            time.sleep(0.02)
-        placeholder.markdown(response)
+        with st.spinner("Thinking..."):
+            try:
+                response = get_bot_response(st.session_state.messages)
+            except ChatError as error:
+                response = f"⚠️ {error}"
+            except Exception:
+                response = "⚠️ Something went wrong. Please try again."
+        st.markdown(response)
 
     st.session_state.messages.append({"role": "assistant", "content": response})
