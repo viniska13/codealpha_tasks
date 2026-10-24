@@ -1,5 +1,6 @@
 """Lexicon - a translation desk. CodeAlpha AI Internship, Task 1."""
 import html
+import os
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
@@ -87,6 +88,19 @@ def phrase_cache() -> dict:
     return {}
 
 
+def build_engines():
+    """Official Google API first if a key is configured (Streamlit secrets or env), then free engines."""
+    key = None
+    try:
+        key = st.secrets.get("GOOGLE_TRANSLATE_API_KEY")
+    except Exception:  # no secrets file configured
+        pass
+    return tr.default_engines(key or os.environ.get("GOOGLE_TRANSLATE_API_KEY"))
+
+
+ENGINES = build_engines()
+
+
 # ----------------------------- helpers ------------------------------------- #
 def log(res: tr.TranslationResult, text: str, conf=None) -> None:
     ss.history.append({"time": datetime.now(), "from": res.source_name, "to": res.target_name,
@@ -110,7 +124,7 @@ def swap_languages() -> None:
 def run_translation(text: str) -> None:
     src = "auto" if ss.src_lang == AUTO else tr.LANGUAGES[ss.src_lang]
     guess = tr.detect_with_confidence(text) if src == "auto" else None
-    res = tr.translate(text, src, tr.LANGUAGES[ss.tgt_lang])
+    res = tr.translate(text, src, tr.LANGUAGES[ss.tgt_lang], engines=ENGINES)
     ss.result, ss.audio = res, None
     log(res, text, guess[1] if guess else None)
 
@@ -142,7 +156,7 @@ def render_output(res: tr.TranslationResult, key: str) -> None:
 def cached_phrase(cache: dict, text: str, code: str):
     if (text, code) not in cache:
         try:
-            cache[(text, code)] = tr.translate(text, "en", code).text
+            cache[(text, code)] = tr.translate(text, "en", code, engines=ENGINES).text
         except Exception:
             return None
     return cache[(text, code)]
@@ -188,7 +202,9 @@ with tab_tr:
                     with st.spinner("Translating"):
                         run_translation(text)
                 except tr.TranslationError as exc:
-                    st.error(f"Every translation engine failed. Check your connection and retry.\n\n{exc}")
+                    st.error("Every translation engine failed. Open the Session tab and run the health "
+                             "check to see which part is down.")
+                    st.code(str(exc), language=None)
                 except Exception as exc:
                     st.error(f"Unexpected error: {exc}")
     with right:
@@ -220,7 +236,7 @@ with tab_tr:
             if st.button("Translate document", key="go_file"):
                 try:
                     with st.spinner("Translating document"):
-                        res = tr.translate(raw, "auto", tr.LANGUAGES[tgt_file])
+                        res = tr.translate(raw, "auto", tr.LANGUAGES[tgt_file], engines=ENGINES)
                     ss.file_result = res
                     log(res, raw)
                 except Exception as exc:
@@ -241,7 +257,7 @@ with tab_cmp:
         else:
             def one(name):
                 try:
-                    return name, tr.translate(ctext, "auto", tr.LANGUAGES[name]), None
+                    return name, tr.translate(ctext, "auto", tr.LANGUAGES[name], engines=ENGINES), None
                 except Exception as exc:
                     return name, None, str(exc)
             with st.spinner("Translating"):
@@ -284,6 +300,22 @@ with tab_pb:
 
 # ----------------------------- session ------------------------------------- #
 with tab_log:
+    st.markdown('<div class="lx-label">Backend health</div>', unsafe_allow_html=True)
+    h1, h2 = st.columns([1, 3])
+    if h1.button("Run health check", key="health_go"):
+        with st.spinner("Probing translation engines, language detection and speech"):
+            ss.health = tr.check_health(ENGINES)
+    h2.markdown('<div class="lx-meta">Engine order: ' + " → ".join(e.name for e in ENGINES) + "</div>",
+                unsafe_allow_html=True)
+    if ss.get("health"):
+        hdf = pd.DataFrame(ss.health)
+        st.dataframe(hdf.rename(columns={"component": "Component", "status": "Status",
+                                         "ms": "ms", "detail": "Detail"}), hide_index=True)
+        if (hdf["status"] == "FAILED").all():
+            st.warning("Everything failed: the app server probably has no outbound internet access.")
+        elif (hdf["status"] == "FAILED").any():
+            st.info("Failed parts are skipped automatically while any engine above still works.")
+    st.write("")
     if not ss.history:
         st.info("Everything you translate in this session is logged here, with timings.")
     else:
@@ -311,6 +343,6 @@ with tab_log:
             ss.history, ss.result, ss.file_result, ss.cmp_results = [], None, None, None
             st.rerun()
 
-st.markdown('<div class="lx-foot">Engines: Google Translate, falling back to MyMemory · long text is split '
-            'at paragraph and sentence boundaries · language detection runs offline (langdetect)</div>',
-            unsafe_allow_html=True)
+st.markdown('<div class="lx-foot">Engines: ' + " → ".join(e.name for e in ENGINES) +
+            ' · long text is split at paragraph and sentence boundaries · '
+            'language detection runs offline (langdetect)</div>', unsafe_allow_html=True)
