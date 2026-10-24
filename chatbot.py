@@ -188,19 +188,12 @@ def get_bot_response(messages):
 
     gemini_key = get_secret("GEMINI_API_KEY")
     claude_key = get_secret("ANTHROPIC_API_KEY")
-    typed_key = (st.session_state.get("user_key") or "").strip()
-    if typed_key and not (gemini_key or claude_key):
-        if typed_key.startswith("sk-ant"):
-            claude_key = typed_key
-        else:
-            gemini_key = typed_key
     if gemini_key:
         return call_gemini(history, gemini_key)
     if claude_key:
         return call_claude(history, claude_key)
     raise ChatError(
-        "No API key found. Paste your free Gemini API key in the sidebar "
-        "(🔑 Add API key), or add `GEMINI_API_KEY` in the app's Secrets."
+        "The chatbot is not configured yet. Add `GEMINI_API_KEY` in the app's Secrets."
     )
 
 
@@ -230,15 +223,6 @@ with st.sidebar:
     st.markdown("---")
     for i, text in enumerate(QUICK_PROMPTS):
         st.button(text, key=f"quick_{i}", use_container_width=True, on_click=queue_prompt, args=(text,))
-    st.markdown("---")
-    with st.expander("🔑 Add API key"):
-        st.text_input(
-            "Gemini API key",
-            type="password",
-            key="user_key",
-            placeholder="Paste key here",
-            help="Free key from aistudio.google.com/apikey. Kept only for this session.",
-        )
 
 # ---------------------------------------------------------------------------
 # Header
