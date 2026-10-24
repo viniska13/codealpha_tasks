@@ -1,48 +1,55 @@
-# CodeAlpha AI Internship Portfolio
+# CodeAlpha AI Internship: Three Instruments
 
-[![Streamlit App - Task 1](https://img.shields.io/badge/Task_1-AI_Translator-blue?style=for-the-badge&logo=streamlit)](https://codealpha-translator.streamlit.app/)
-[![Streamlit App - Task 2](https://img.shields.io/badge/Task_2-FAQ_Chatbot-green?style=for-the-badge&logo=streamlit)](https://codealpha-chatbotai.streamlit.app/)
-[![Streamlit App - Task 3](https://img.shields.io/badge/Task_3-Object_Detection-orange?style=for-the-badge&logo=streamlit)](https://codealpha-objectdetection.streamlit.app/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![tests](https://github.com/viniska13/codealpha_tasks/actions/workflows/ci.yml/badge.svg)](https://github.com/viniska13/codealpha_tasks/actions/workflows/ci.yml)
 
-Official submission repository for the **CodeAlpha Artificial Intelligence Internship**. This repository houses three distinct, production-ready AI applications built with Python, Streamlit, and advanced machine learning/NLP libraries, fully deployed and hosted live on Streamlit Community Cloud.
+Three small apps built to **fail gracefully**: a translator that survives a blocked API, a chatbot that survives an exhausted quota, and a vision tool that turns raw detections into something a person can act on.
 
-* **Internship Track:** Artificial Intelligence
-* **User ID:** `CA/DF1/316933`
-* **Submission Deadline:** November 10, 2026
+| 47 | 3 | 20 | 80 | 5 |
+|:--:|:--:|:--:|:--:|:--:|
+| languages | translation engines in a fallback chain | unit tests, no network needed | COCO classes detected | chatbot model fallbacks |
 
----
+| Task | Instrument | Live |
+|---|---|---|
+| 1 | **Lexicon**, a translation desk | [open](https://codealpha-translator.streamlit.app/) |
+| 2 | **Assistant**, a conversational chatbot | [open](https://codealpha-chatbotai.streamlit.app/) |
+| 4 | **Vision Lab**, object detection and scene analysis | [open](https://codealpha-objectdetection.streamlit.app/) |
 
-## 🛠️ Tech Stack & Architecture
-* **Programming Language:** Python 3.11
-* **Web Framework:** Streamlit Community Cloud
-* **Computer Vision & AI:** Ultralytics YOLOv8, OpenCV (Headless), Pillow
-* **NLP & Translation:** `translators`, `deep-translator`
-* **Version Control:** Git, GitHub Actions
+<!-- Add screenshots to docs/ and uncomment:
+![Lexicon](docs/lexicon.png) ![Assistant](docs/assistant.png) ![Vision Lab](docs/vision.png)
+-->
 
----
-
-## 📂 Project Structure & Deployed Tasks
-
-### Task 1: Polyglot AI Translator (`app.py`)
-* **Description:** A modern, gradient-styled multi-language translation dashboard supporting over 15 global languages with automatic source detection and fallback handling.
-* **Live Application:** [View Live App](https://codealpha-translator.streamlit.app/)
-
-### Task 2: Gemini-Style FAQ Chatbot (`chatbot.py`)
-* **Description:** An interactive conversational interface featuring sidebar quick-prompts, clean Markdown response parsing, and an intelligent rule-based Q&A engine.
-* **Live Application:** [View Live App](https://codealpha-chatbotai.streamlit.app/)
-
-### Task 3: Real-Time Object Detection Suite (`object_detection.py`)
-* **Description:** A computer vision web utility powered by YOLOv8 and OpenCV that processes uploaded images, extracts bounding box coordinates, and classifies objects instantly.
-* **Live Application:** [View Live App](https://codealpha-objectdetection.streamlit.app/)
+**Reading this in two minutes?** Start with [`core/translation.py`](core/translation.py) (the engine chain), [`tests/test_translation.py`](tests/test_translation.py) (what is proven), `call_gemini` in [`chatbot.py`](chatbot.py) (model fallback), and `build_table` / `draw_detections` in [`object_detection.py`](object_detection.py) (one table, many views).
 
 ---
 
-## 🚀 Local Installation & Setup Instructions
+## 1 · Lexicon: translation that does not break
 
-To clone and run these applications locally on your machine, follow these steps:
+**Problem.** Free translation endpoints get rate-limited, return captcha pages from cloud servers, or silently return nothing. A translator that just calls one of them looks fine until it is shown to someone.
 
-1. **Clone the repository:**
-   ```bash
-   git clone [https://github.com/viniska13/codealpha_tasks.git](https://github.com/viniska13/codealpha_tasks.git)
-   cd codealpha_tasks
+**Built.** A backend that treats failure as the normal case.
+- Direct JSON calls with timeouts and retries (no HTML scraping).
+- An ordered engine chain: Google Cloud API (if a key is set) → Google web JSON → MyMemory.
+- Each engine gets chunks sized for its own limit (about 4,500 characters vs about 450).
+- A health check that probes every engine, the language detector and speech, and reports OK or FAILED with the reason.
+- 47 languages, offline detection with a confidence score, side-by-side comparison across four languages, a phrasebook with audio, document translation, and a session ledger with latency charts and CSV export.
+
+**Proof.** 20 unit tests cover chunking, fallback order, empty and malformed responses, MyMemory quota warnings, retry with backoff, and the guarantee that API keys never appear in error messages. CI runs them on every push.
+
+## 2 · Assistant: a chatbot that explains its failures
+
+**Problem.** Free-tier AI APIs run out of quota or go busy exactly when you demo them.
+
+**Built.** Gemini models are tried in order; a missing model, exhausted quota or busy server moves to the next one, and the model that worked is remembered for the session. The conversation keeps the last 20 turns of context. Keys come from Streamlit secrets or environment variables only. Errors become plain sentences ("free limit used up, wait a few minutes") rather than stack traces.
+
+## 3 · Vision Lab: detections as decisions
+
+**Problem.** Bounding boxes alone do not help anyone decide anything.
+
+**Built.** YOLOv8 output becomes one tidy table (class, confidence, box, area %), and every view derives from it.
+- **HUD overlay** with adjustable confidence, IoU, input size and class filters.
+- **Privacy blur** that blurs chosen classes (people by default) before a photo is shared.
+- **Density map** that weights object centres by confidence.
+- **Scene summary** in plain language, with a rule-based scene guess that says it is an inference.
+- **Position grid** and CSV / PNG export.
+
+Uploads honour EXIF orientation, are downscaled to 1,280 px on the long side, and results are cached per image and settings. Inference
