@@ -59,6 +59,7 @@ GEMINI_MODELS = [
     "gemini-3.1-flash-lite-preview",
     "gemini-3-flash-preview",
     "gemini-2.5-flash",
+    "gemini-2.5-flash-lite",
 ]
 CLAUDE_MODEL = "claude-haiku-5-5"
 MAX_HISTORY = 20
@@ -66,6 +67,13 @@ MAX_HISTORY = 20
 
 class ChatError(Exception):
     pass
+
+
+def _error_detail(response):
+    try:
+        return str(response.json().get("error", {}).get("message", ""))[:200]
+    except Exception:
+        return ""
 
 
 def get_secret(name):
@@ -94,6 +102,7 @@ def call_gemini(history, api_key):
         models.remove(cached)
         models.insert(0, cached)
 
+    last_status = None
     for model in models:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
         try:
@@ -106,14 +115,15 @@ def call_gemini(history, api_key):
         except requests.RequestException:
             raise ChatError("Network problem. Please try again.")
 
-        if r.status_code == 404:
-            continue  # model name not available, try the next one
+        if r.status_code in (404, 429, 500, 503):
+            # Model missing, out of free quota, or overloaded: try the next model.
+            last_status = r.status_code
+            continue
         if r.status_code in (400, 401, 403):
-            raise ChatError("The API key looks invalid. Please check GEMINI_API_KEY in your secrets.")
-        if r.status_code == 429:
-            raise ChatError("Too many requests right now. Please wait a moment and try again.")
+            detail = _error_detail(r)
+            raise ChatError(f"The API key or request was rejected. {detail}")
         if r.status_code != 200:
-            raise ChatError(f"The AI service returned an error ({r.status_code}). Please try again.")
+            raise ChatError(f"The AI service returned an error ({r.status_code}). {_error_detail(r)}")
 
         data = r.json()
         candidates = data.get("candidates") or []
@@ -126,6 +136,13 @@ def call_gemini(history, api_key):
         st.session_state["gemini_model"] = model
         return text.strip()
 
+    if last_status == 429:
+        raise ChatError(
+            "The free daily/minute limit is used up on all models. "
+            "Wait a few minutes (or until tomorrow), or create a new key with a different Google account."
+        )
+    if last_status in (500, 503):
+        raise ChatError("The AI service is busy right now. Please try again in a moment.")
     raise ChatError("No available Gemini model was found. Set GEMINI_MODEL in your secrets.")
 
 
