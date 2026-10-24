@@ -39,7 +39,7 @@ Three small apps built to **fail gracefully**: a translator that survives a bloc
 
 **Problem.** Free-tier AI APIs run out of quota or go busy exactly when you demo them.
 
-**Built.** Language models are tried in order from a fallback list…; a missing model, exhausted quota or busy server moves to the next one, and the model that worked is remembered for the session. The conversation keeps the last 20 turns of context. Keys come from Streamlit secrets or environment variables only. Errors become plain sentences ("free limit used up, wait a few minutes") rather than stack traces.
+**Built.** Language models are tried in order from a fallback list; a missing model, exhausted quota or busy server moves to the next one, and the model that worked is remembered for the session. The conversation keeps the last 20 turns of context. Keys come from Streamlit secrets or environment variables only. Errors become plain sentences ("free limit used up, wait a few minutes") rather than stack traces.
 
 ## 3 · Vision Lab: detections as decisions
 
