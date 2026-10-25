@@ -1,0 +1,32 @@
+{
+ "in_scope": [
+  ["is there any chance to hand in after 10 november", "extension"],
+  ["what are the requirements for the object detection task", "task4"],
+  ["do I have to use yolo", "task4"],
+  ["can I use nltk for the chatbot", "task2"],
+  ["what do I need for the translation task", "task1"],
+  ["which libraries for music generation", "task3"],
+  ["is the linkedin video compulsory", "linkedin_video"],
+  ["how many projects must I finish to be eligible", "how_many_tasks"],
+  ["how do I reach codealpha team", "contact_whatsapp"],
+  ["what happens if I don't submit", "extension"],
+  ["whats the format for naming my github repo", "github_repo"],
+  ["will there be a recommendation letter", "lor"],
+  ["good morning", "greeting"],
+  ["are you a bot", "who_are_you"],
+  ["what is the final submission time", "deadline"],
+  ["where can I find the submission link", "submit_form"],
+  ["which batch is this", "dates"],
+  ["do top interns get prizes", "top_performer"],
+  ["is a resume review included", "placement"],
+  ["list everything I have to do", "steps"]
+ ],
+ "out_of_scope": [
+  "how far is the moon",
+  "recipe for pasta",
+  "what is machine learning",
+  "who is the prime minister of india",
+  "play some music",
+  "how do I fix my laptop"
+ ]
+}
